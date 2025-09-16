@@ -1,38 +1,50 @@
+#include <stdio.h>
+#include <stdbool.h>
+#include <string.h>
+#include <unistd.h>
 #include "./monitor.h"
-#include <assert.h>
-#include <thread>
-#include <chrono>
-#include <iostream>
-using std::cout, std::flush, std::this_thread::sleep_for, std::chrono::seconds;
 
-int vitalsOk(float temperature, float pulseRate, float spo2) {
-  if (temperature > 102 || temperature < 95) {
-    cout << "Temperature is critical!\n";
-    for (int i = 0; i < 6; i++) {
-      cout << "\r* " << flush;
-      sleep_for(seconds(1));
-      cout << "\r *" << flush;
-      sleep_for(seconds(1));
+// Define a type for the alert callback function
+typedef void (*AlertCallback)(const char*);
+
+// Helper function to concatenate strings for alert messages
+void createAlertMessage(char* buffer, size_t buffer_size, const char* vitalName, const char* message) {
+    snprintf(buffer, buffer_size, "%s %s", vitalName, message);
+}
+
+void PrintAlertMessage(const char* message) {
+    printf("%s\n", message);
+    for (int i = 0; i < 6; ++i) {
+        printf("\r* ");
+        fflush(stdout);
+        sleep(1);
+        printf("\r *");
+        fflush(stdout);
+        sleep(1);
     }
-    return 0;
-  } else if (pulseRate < 60 || pulseRate > 100) {
-    cout << "Pulse Rate is out of range!\n";
-    for (int i = 0; i < 6; i++) {
-      cout << "\r* " << flush;
-      sleep_for(seconds(1));
-      cout << "\r *" << flush;
-      sleep_for(seconds(1));
+}
+
+bool checkVital(const VitalCheck* vital, AlertCallback alert) {
+    if (vital->value < vital->min || vital->value > vital->max) {
+        char alertMessage[256];
+        createAlertMessage(alertMessage, sizeof(alertMessage), vital->name, "is out of range!");
+        alert(alertMessage);
+        return false;
     }
-    return 0;
-  } else if (spo2 < 90) {
-    cout << "Oxygen Saturation out of range!\n";
-    for (int i = 0; i < 6; i++) {
-      cout << "\r* " << flush;
-      sleep_for(seconds(1));
-      cout << "\r *" << flush;
-      sleep_for(seconds(1));
+    return true;
+}
+
+bool areAllVitalsNormal(float temperature, float pulseRate, float spo2, AlertCallback alert) {
+    const VitalCheck vitals[] = {
+        {"Temperature", temperature, 95.0, 102.0},
+        {"Pulse Rate", pulseRate, 60.0, 100.0},
+        {"Oxygen Saturation", spo2, 90.0, 100.0}
+    };
+
+    bool allVitalsOk = true;
+    for (int i = 0; i < 3; ++i) {
+        allVitalsOk = checkVital(&vitals[i], alert) && allVitalsOk;
     }
-    return 0;
-  }
-  return 1;
+
+    return allVitalsOk;
 }
