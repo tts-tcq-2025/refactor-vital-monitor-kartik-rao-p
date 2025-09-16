@@ -1,74 +1,50 @@
-#include "./monitor.h" 
-#include <assert.h>    
-#include <stdio.h>     
-#include <string.h>    
-#include <time.h>      
-#include <unistd.h>    
+#include <stdio.h>
+#include <stdbool.h>
+#include <string.h>
+#include <unistd.h>
+#include "./monitor.h"
 
-void sleep_for_seconds(int seconds) {
-    usleep(seconds * 1000000); 
+// Define a type for the alert callback function
+typedef void (*AlertCallback)(const char*);
+
+// Helper function to concatenate strings for alert messages
+void createAlertMessage(char* buffer, size_t buffer_size, const char* vitalName, const char* message) {
+    snprintf(buffer, buffer_size, "%s %s", vitalName, message);
 }
 
-void displayWarning(const char* message) {
+void PrintAlertMessage(const char* message) {
     printf("%s\n", message);
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 6; ++i) {
         printf("\r* ");
         fflush(stdout);
-        sleep_for_seconds(1);
+        sleep(1);
         printf("\r *");
         fflush(stdout);
-        sleep_for_seconds(1);
+        sleep(1);
     }
-    printf("\n");
 }
 
-// Helper function for condition checking
-int checkAndWarn(int condition, const char* message) {
-    if (condition) {
-        displayWarning(message);
-        return 0;
+bool checkVital(const VitalCheck* vital, AlertCallback alert) {
+    if (vital->value < vital->min || vital->value > vital->max) {
+        char alertMessage[256];
+        createAlertMessage(alertMessage, sizeof(alertMessage), vital->name, "is out of range!");
+        alert(alertMessage);
+        return false;
     }
-    return 1;
+    return true;
 }
 
-int vitalsOk(float temperature, float pulseRate, float spo2) {
-    if (!checkAndWarn(temperature > 102.0f || temperature < 95.0f, "Temperature is critical!"))
-        return 0;
+bool areAllVitalsNormal(float temperature, float pulseRate, float spo2, AlertCallback alert) {
+    const VitalCheck vitals[] = {
+        {"Temperature", temperature, 95.0, 102.0},
+        {"Pulse Rate", pulseRate, 60.0, 100.0},
+        {"Oxygen Saturation", spo2, 90.0, 100.0}
+    };
 
-    if (!checkAndWarn(pulseRate < 60.0f || pulseRate > 100.0f, "Pulse Rate is out of range!"))
-        return 0;
+    bool allVitalsOk = true;
+    for (int i = 0; i < 3; ++i) {
+        allVitalsOk = checkVital(&vitals[i], alert) && allVitalsOk;
+    }
 
-    if (!checkAndWarn(spo2 < 90.0f, "Oxygen Saturation out of range!"))
-        return 0;
-
-    return 1;
-}
-
-void testVitalsOk() {
-    printf("Running tests...\n");
-
-    printf("Test Case 1: Critical temperature (high) - Expected 0\n");
-    assert(vitalsOk(103.0f, 70.0f, 95.0f) == 0);
-
-    printf("Test Case 2: Critical temperature (low) - Expected 0\n");
-    assert(vitalsOk(94.0f, 70.0f, 95.0f) == 0);
-
-    printf("Test Case 3: Low pulse rate - Expected 0\n");
-    assert(vitalsOk(98.0f, 50.0f, 95.0f) == 0);
-
-    printf("Test Case 4: High pulse rate - Expected 0\n");
-    assert(vitalsOk(98.0f, 110.0f, 95.0f) == 0);
-
-    printf("Test Case 5: Low oxygen saturation - Expected 0\n");
-    assert(vitalsOk(98.0f, 70.0f, 85.0f) == 0);
-
-    printf("Test Case 6: All vitals okay - Expected 1\n");
-    assert(vitalsOk(98.0f, 70.0f, 95.0f) == 1);
-
-    printf("All tests passed!\n");
-}
-
-int main() {
-    testVitalsOk();
-    return 0;
+    return allVitalsOk;
 }
